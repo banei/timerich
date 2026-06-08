@@ -1,0 +1,77 @@
+# ============================================================
+# DCA-Dashboard .gitignore
+# ============================================================
+
+# ──────────────────
+# 环境变量 (含密码，绝对不能进 git)
+# ──────────────────
+.env
+.env.local
+.env.production
+
+# ──────────────────
+# MySQL 数据与日志
+# ──────────────────
+mysql-data/
+mysql-logs/
+mysql-dev-data/
+
+# ──────────────────
+# 备份文件
+# ──────────────────
+backups/
+*.sql
+*.sql.gz
+
+# ──────────────────
+# Python
+# ──────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ──────────────────
+# 日志
+# ──────────────────
+logs/
+*.log
+
+# ──────────────────
+# Node / 前端
+# ──────────────────
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+.npm
+
+# ──────────────────
+# IDE
+# ──────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ──────────────────
+# Docker
+# ──────────────────
+# 不忽略 docker-compose.yml，但忽略 override
+docker-compose.override.yml

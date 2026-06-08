@@ -1,0 +1,64 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: timerich-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dca_dashboard}
+      MYSQL_USER: ${MYSQL_USER:-dca_app}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --max-connections=200
+      - --innodb-buffer-pool-size=256M
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+      - ./mysql-logs:/var/log/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    build: ./backend
+    container_name: timerich-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8051}:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-dca_app}:${MYSQL_APP_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-dca_dashboard}?charset=utf8mb4
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8051}
+        VITE_APP_TITLE: ${VITE_APP_TITLE:-TimeRich}
+    container_name: timerich-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8050}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
