@@ -8,7 +8,13 @@ type Holding = {
   fund_name: string;
   total_shares: string;
   total_invested: string;
+  avg_cost?: string;
+  current_nav?: string;
   current_value: string;
+  profit_pct?: number;
+  holding_days?: number;
+  shares_over_one_year?: string;
+  shares_under_one_year?: string;
 };
 
 export default function HoldingsPage() {
@@ -54,7 +60,7 @@ export default function HoldingsPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 12 }}>
+      <div className="page-actions">
         <button onClick={() => setShowForm(true)}>新增交易</button>
         <button className="secondary" style={{ marginLeft: 8 }} disabled>
           批量导入 CSV <span className="badge">待模板</span>
@@ -67,7 +73,10 @@ export default function HoldingsPage() {
             <th>代码</th>
             <th>名称</th>
             <th>市值</th>
-            <th>累计投入</th>
+            <th>均价</th>
+            <th>现价</th>
+            <th>浮盈率</th>
+            <th>持有超1年份额</th>
             <th>份额</th>
           </tr>
         </thead>
@@ -76,9 +85,16 @@ export default function HoldingsPage() {
             <tr key={h.fund_id}>
               <td>{h.fund_code}</td>
               <td>{h.fund_name}</td>
-              <td>¥{h.current_value}</td>
-              <td>¥{h.total_invested}</td>
-              <td>{h.total_shares}</td>
+              <td className="font-num">¥{h.current_value}</td>
+              <td className="font-num">{h.avg_cost ?? "—"}</td>
+              <td className="font-num">{h.current_nav ?? "—"}</td>
+              <td className={`font-num ${(h.profit_pct ?? 0) >= 0 ? "text-up" : "text-down"}`}>
+                {h.profit_pct != null ? `${h.profit_pct >= 0 ? "+" : ""}${(h.profit_pct * 100).toFixed(1)}%` : "—"}
+              </td>
+              <td className="font-num" title="FIFO 统计，卖出时优先卖此部分（红利税 0%）">
+                {h.shares_over_one_year ?? "0"}
+              </td>
+              <td className="font-num">{h.total_shares}</td>
             </tr>
           ))}
         </tbody>

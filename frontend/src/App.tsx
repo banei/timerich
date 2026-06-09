@@ -59,7 +59,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   const nav = [
     { to: "/dashboard", label: "仪表盘" },
     { to: "/holdings", label: "持仓" },
-    { to: "/execution", label: "月度执行" },
+    { to: "/execution", label: "定投执行" },
     { to: "/data", label: "数据管理" },
     { to: "/settings", label: "设置" },
   ];
@@ -80,10 +80,9 @@ function Layout({ children }: { children: React.ReactNode }) {
       <div className="main">
         <header className="topbar">
           <strong>{nav.find((n) => n.to === location.pathname)?.label || "TimeRich"}</strong>
-          <div>
+          <div className="topbar-actions">
             <button
               className="secondary"
-              style={{ marginRight: 8 }}
               onClick={async () => {
                 await api("/api/v1/dashboard/refresh", { method: "POST" });
                 window.location.reload();

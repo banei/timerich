@@ -55,6 +55,7 @@ class UserConfig(Base):
     rebalance_threshold_active: Mapped[Decimal] = mapped_column(DECIMAL(8, 6), default=Decimal("0.10"))
     max_total_pct_of_family: Mapped[Decimal] = mapped_column(DECIMAL(8, 6), default=Decimal("0.30"))
     family_total_assets: Mapped[Decimal | None] = mapped_column(DECIMAL(18, 4), nullable=True)
+    bucket_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(3), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(3), default=utcnow, onupdate=utcnow)

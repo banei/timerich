@@ -9,6 +9,7 @@ from app.auth import create_access_token, get_current_user, hash_password, requi
 from app.config import get_settings
 from app.database import get_db
 from app.models import User, UserConfig
+from app.services.bucket_config import bucket_config_to_json, default_buckets
 from app.schemas.common import ApiResponse, LoginRequest, TokenData, UserCreateRequest, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,6 +86,7 @@ def create_user(
             target_nasdaq_pct=Decimal("0.35"),
             target_dividend_pct=Decimal("0.40"),
             target_bond_pct=Decimal("0.25"),
+            bucket_config=bucket_config_to_json(default_buckets()),
             monthly_budget=Decimal("5000"),
         )
     )

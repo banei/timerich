@@ -1,8 +1,10 @@
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Fund, Holding, Transaction
+from app.models import Fund, FundQuote, Holding, Transaction
+from app.services.holding_cost import build_holding_cost_snapshot, txn_lots_from_rows
 
 
 def recalculate_holdings(db: Session, user_id: int) -> None:
@@ -12,20 +14,19 @@ def recalculate_holdings(db: Session, user_id: int) -> None:
         .order_by(Transaction.date, Transaction.id)
         .all()
     )
-    aggregates: dict[int, dict[str, Decimal]] = {}
-
+    by_fund: dict[int, list] = {}
     for txn in txns:
-        agg = aggregates.setdefault(
-            txn.fund_id,
-            {"shares": Decimal(0), "invested": Decimal(0), "value": Decimal(0)},
-        )
-        if txn.txn_type in {"buy", "rebalance_buy", "dividend"}:
-            agg["shares"] += txn.shares
-            agg["invested"] += txn.amount
-        elif txn.txn_type in {"sell", "rebalance_sell"}:
-            agg["shares"] -= txn.shares
-            agg["invested"] -= txn.amount
-        agg["value"] = agg["shares"] * txn.nav
+        by_fund.setdefault(txn.fund_id, []).append(txn)
+
+    aggregates: dict[int, dict[str, Decimal]] = {}
+    for fund_id, fund_txns in by_fund.items():
+        snap = build_holding_cost_snapshot(txn_lots_from_rows(fund_txns))
+        last_nav = fund_txns[-1].nav if fund_txns else Decimal(0)
+        aggregates[fund_id] = {
+            "shares": snap.total_shares,
+            "invested": snap.total_cost,
+            "value": snap.total_shares * last_nav,
+        }
 
     existing = {
         h.fund_id: h
@@ -34,6 +35,8 @@ def recalculate_holdings(db: Session, user_id: int) -> None:
 
     seen: set[int] = set()
     for fund_id, agg in aggregates.items():
+        if agg["shares"] <= 0:
+            continue
         holding = existing.get(fund_id)
         if holding is None:
             holding = Holding(user_id=user_id, fund_id=fund_id)
@@ -50,6 +53,16 @@ def recalculate_holdings(db: Session, user_id: int) -> None:
     db.commit()
 
 
+def _latest_nav(db: Session, fund_id: int) -> Decimal | None:
+    row = (
+        db.query(FundQuote)
+        .filter(FundQuote.fund_id == fund_id)
+        .order_by(FundQuote.date.desc())
+        .first()
+    )
+    return row.nav if row and row.nav else None
+
+
 def holdings_with_funds(db: Session, user_id: int) -> list[dict]:
     rows = (
         db.query(Holding, Fund)
@@ -57,17 +70,41 @@ def holdings_with_funds(db: Session, user_id: int) -> list[dict]:
         .filter(Holding.user_id == user_id)
         .all()
     )
-    return [
-        {
-            "fund_id": h.fund_id,
-            "fund_code": f.code,
-            "fund_name": f.name,
-            "total_shares": h.total_shares,
-            "total_invested": h.total_invested,
-            "current_value": h.current_value,
-        }
-        for h, f in rows
-    ]
+    result: list[dict] = []
+    for h, f in rows:
+        fund_txns = (
+            db.query(Transaction)
+            .filter(Transaction.user_id == user_id, Transaction.fund_id == h.fund_id)
+            .order_by(Transaction.date, Transaction.id)
+            .all()
+        )
+        snap = build_holding_cost_snapshot(txn_lots_from_rows(fund_txns))
+        current_nav = _latest_nav(db, h.fund_id) or (
+            h.current_value / h.total_shares if h.total_shares > 0 else Decimal(0)
+        )
+        profit = h.current_value - snap.total_cost
+        profit_pct = float(profit / snap.total_cost) if snap.total_cost > 0 else 0.0
+        first_buy = fund_txns[0].date if fund_txns else date.today()
+        holding_days = (date.today() - first_buy).days
+
+        result.append(
+            {
+                "fund_id": h.fund_id,
+                "fund_code": f.code,
+                "fund_name": f.name,
+                "total_shares": h.total_shares,
+                "total_invested": snap.total_cost,
+                "avg_cost": snap.avg_cost,
+                "current_nav": current_nav,
+                "current_value": h.current_value,
+                "profit": profit,
+                "profit_pct": profit_pct,
+                "holding_days": holding_days,
+                "shares_over_one_year": snap.shares_over_one_year,
+                "shares_under_one_year": snap.shares_under_one_year,
+            }
+        )
+    return result
 
 
 def category_totals(db: Session, user_id: int) -> dict[str, Decimal]:

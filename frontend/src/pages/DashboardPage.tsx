@@ -90,7 +90,7 @@ export default function DashboardPage() {
       </div>
 
       {advice?.overall && (
-        <div className={`card advice-overall ${overallTone}`} style={{ marginTop: 16 }}>
+        <div className={`card advice-overall mt-16 ${overallTone}`}>
           <h3>操作建议</h3>
           <p className="advice-headline">{advice.overall.headline}</p>
           <ul className="advice-list">
@@ -101,7 +101,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card mt-16">
         <h3>估值信号</h3>
         <div className="grid">
           <div>

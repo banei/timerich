@@ -40,6 +40,17 @@ class UserOut(BaseModel):
     created_at: Any
 
 
+class BucketConfigItem(BaseModel):
+    code: str
+    name: str
+    target_pct: Decimal
+    color: str | None = None
+
+
+class BucketConfigOut(BaseModel):
+    buckets: list[BucketConfigItem]
+
+
 class UserConfigOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,6 +58,7 @@ class UserConfigOut(BaseModel):
     target_nasdaq_pct: Decimal
     target_dividend_pct: Decimal
     target_bond_pct: Decimal
+    bucket_config: BucketConfigOut | None = None
     monthly_budget: Decimal
     rebalance_threshold_passive: Decimal
     rebalance_threshold_active: Decimal
@@ -60,6 +72,7 @@ class UserConfigUpdate(BaseModel):
     target_nasdaq_pct: Decimal | None = None
     target_dividend_pct: Decimal | None = None
     target_bond_pct: Decimal | None = None
+    bucket_config: BucketConfigOut | None = None
     monthly_budget: Decimal | None = None
     rebalance_threshold_passive: Decimal | None = None
     rebalance_threshold_active: Decimal | None = None
@@ -101,12 +114,47 @@ class HoldingOut(BaseModel):
     fund_name: str | None = None
     total_shares: Decimal
     total_invested: Decimal
+    avg_cost: Decimal | None = None
+    current_nav: Decimal | None = None
     current_value: Decimal
+    profit: Decimal | None = None
+    profit_pct: float | None = None
+    holding_days: int | None = None
+    shares_over_one_year: Decimal | None = None
+    shares_under_one_year: Decimal | None = None
 
 
 class ExecutionStepUpdate(BaseModel):
     step_name: str
     completed: bool
+
+
+class ExecutionAmountOverrides(BaseModel):
+    amounts: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class GrowthPurchaseLimitsUpdate(BaseModel):
+    """成长档日限购覆盖：0=暂停申购，>0=当日可买上限（元）。"""
+
+    limits: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class DailyDcaFundItem(BaseModel):
+    fund_code: str
+    fund_name: str | None = None
+    planned_amount: Decimal
+    selected: bool = True
+
+
+class DailyDcaConfirm(BaseModel):
+    action_date: str
+    funds: list[DailyDcaFundItem] = Field(default_factory=list)
+
+
+class DailyDcaCancel(BaseModel):
+    action_date: str
+    stop_memory: bool = False
+    funds: list[DailyDcaFundItem] = Field(default_factory=list)
 
 
 class DataSourceStatus(BaseModel):

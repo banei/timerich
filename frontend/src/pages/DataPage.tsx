@@ -23,13 +23,13 @@ export default function DataPage() {
   return (
     <>
       <button onClick={refresh}>刷新数据源</button>
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card mt-16">
         <h3>10 年回填进度</h3>
         <p>
           {status?.backfill?.status} · {status?.backfill?.progress_pct}% · {status?.backfill?.message}
         </p>
       </div>
-      <table style={{ marginTop: 16 }}>
+      <table className="data-table">
         <thead>
           <tr>
             <th>数据源</th>

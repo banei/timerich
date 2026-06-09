@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.auth import hash_password
 from app.database import SessionLocal
 from app.models import AssetCategory, Fund, User, UserConfig
+from app.services.bucket_config import bucket_config_to_json, default_buckets
 
 CATEGORIES = [
     (1, "NASDAQ", "纳指100"),
@@ -76,6 +77,7 @@ def seed_admin(db: Session) -> None:
                 target_nasdaq_pct=Decimal("0.35"),
                 target_dividend_pct=Decimal("0.40"),
                 target_bond_pct=Decimal("0.25"),
+                bucket_config=bucket_config_to_json(default_buckets()),
                 monthly_budget=Decimal("5000"),
             )
         )

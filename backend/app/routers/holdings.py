@@ -1,16 +1,44 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Fund, MonthlyExecution, Transaction, User, UserConfig
-from app.schemas.common import ApiResponse, ExecutionStepUpdate, TransactionCreate, TransactionOut
+from app.models import Fund, FundQuote, MonthlyCoefficient, MonthlyExecution, PEHistory, Transaction, User, UserConfig
+from app.schemas.common import (
+    ApiResponse,
+    DailyDcaCancel,
+    DailyDcaConfirm,
+    ExecutionAmountOverrides,
+    ExecutionStepUpdate,
+    GrowthPurchaseLimitsUpdate,
+    TransactionCreate,
+    TransactionOut,
+)
+from app.services.daily_dca import (
+    MEMORY_KEY,
+    cancel_daily_dca,
+    confirm_daily_dca,
+    copy_memory_to_execution_detail,
+    get_daily_dca_memory,
+    stop_daily_dca_memory,
+)
 from app.services.allocation import calculate_monthly_amounts
+from app.services.coefficients import calculate_dividend_coefficient, calculate_nasdaq_coefficient
+from app.services.bucket_config import parse_bucket_config
+from app.services.daily_planner import build_daily_execution
+from app.services.execution_calendar import build_action_steps, date_info, first_trading_day, last_trading_day
+from app.services.execution_planner import BOND_FUNDS, DIVIDEND_FUNDS, build_execution_plan
+from app.services.fund_fees import apply_fees_to_plan_dict, fee_catalog_from_funds
+from app.services.fund_nav import enrich_daily_dca_batch, enrich_funds_for_confirm
+from app.services.growth_limits import all_growth_fund_codes, merge_purchase_limits
 from app.services.holdings import holdings_with_funds, recalculate_holdings
+from app.services.market_data import MarketDataService
+from app.services.percentile import calculate_percentile
 
 router = APIRouter(tags=["holdings"])
 
@@ -98,6 +126,125 @@ STEP_MAP = {
 }
 
 
+def _load_execution_signals(db: Session, user_id: int) -> dict:
+    svc = MarketDataService(db)
+    ndx = svc.get_latest_index("NDX")
+    h30269 = svc.get_latest_index("H30269")
+
+    pe_percentile = 0.5
+    if ndx and ndx.pe_ttm:
+        history = [float(r.pe_ttm) for r in db.query(PEHistory).all()]
+        if history:
+            pe_percentile = calculate_percentile(float(ndx.pe_ttm), history)
+
+    nasdaq_coef, nasdaq_label = calculate_nasdaq_coefficient(pe_percentile)
+    div_yield = float(h30269.dividend_yield) if h30269 and h30269.dividend_yield else 0.047
+    div_coef, div_label = calculate_dividend_coefficient(div_yield)
+
+    month = date.today().strftime("%Y-%m")
+    coef_row = (
+        db.query(MonthlyCoefficient)
+        .filter(MonthlyCoefficient.user_id == user_id, MonthlyCoefficient.month == month)
+        .first()
+    )
+    if coef_row:
+        nasdaq_coef = float(coef_row.nasdaq_coefficient)
+        div_coef = float(coef_row.dividend_coefficient)
+
+    return {
+        "pe_percentile": pe_percentile,
+        "nasdaq_coef": nasdaq_coef,
+        "nasdaq_label": nasdaq_label,
+        "div_yield": div_yield,
+        "div_coef": div_coef,
+        "div_label": div_label,
+    }
+
+
+def _month_date_range(month: str) -> tuple[date, date]:
+    year, mon = map(int, month.split("-"))
+    start = date(year, mon, 1)
+    if mon == 12:
+        end = date(year + 1, 1, 1)
+    else:
+        end = date(year, mon + 1, 1)
+    return start, end
+
+
+def _invested_for_funds(
+    db: Session,
+    user_id: int,
+    fund_codes: list[str],
+    start: date,
+    end: date,
+) -> float:
+    if not fund_codes:
+        return 0.0
+    funds = db.query(Fund).filter(Fund.code.in_(fund_codes)).all()
+    fund_ids = [f.id for f in funds]
+    if not fund_ids:
+        return 0.0
+    total = (
+        db.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.fund_id.in_(fund_ids),
+            Transaction.txn_type == "buy",
+            Transaction.date >= start,
+            Transaction.date < end,
+        )
+        .scalar()
+    )
+    return float(total or 0)
+
+
+def _invested_by_bucket(db: Session, user_id: int, month: str) -> dict[str, float]:
+    start, end = _month_date_range(month)
+    return {
+        "growth": _invested_for_funds(db, user_id, all_growth_fund_codes(), start, end),
+        "dividend": _invested_for_funds(db, user_id, list(DIVIDEND_FUNDS.values()), start, end),
+        "gold": _invested_for_funds(db, user_id, ["518880"], start, end),
+        "bond_long": _invested_for_funds(db, user_id, [BOND_FUNDS["long"]], start, end),
+        "bond_short": _invested_for_funds(db, user_id, [BOND_FUNDS["short"]], start, end),
+    }
+
+
+def _today_invested_by_bucket(db: Session, user_id: int, as_of: date) -> dict[str, float]:
+    start = as_of
+    end = as_of + timedelta(days=1)
+    return {
+        "growth": _invested_for_funds(db, user_id, all_growth_fund_codes(), start, end),
+        "dividend": _invested_for_funds(db, user_id, list(DIVIDEND_FUNDS.values()), start, end),
+        "gold": _invested_for_funds(db, user_id, ["518880"], start, end),
+        "bond_long": _invested_for_funds(db, user_id, [BOND_FUNDS["long"]], start, end),
+        "bond_short": _invested_for_funds(db, user_id, [BOND_FUNDS["short"]], start, end),
+    }
+
+
+def _growth_limit_overrides(row: MonthlyExecution) -> dict[str, float]:
+    if not row.execution_detail or not isinstance(row.execution_detail, dict):
+        return {}
+    raw = row.execution_detail.get("growth_purchase_limits")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): float(v) for k, v in raw.items()}
+
+
+def _load_purchase_limits(db: Session, fund_codes: list[str]) -> dict[str, float]:
+    funds = db.query(Fund).filter(Fund.code.in_(fund_codes)).all()
+    limits: dict[str, float] = {}
+    for fund in funds:
+        quote = (
+            db.query(FundQuote)
+            .filter(FundQuote.fund_id == fund.id)
+            .order_by(FundQuote.date.desc())
+            .first()
+        )
+        if quote and quote.purchase_limit is not None:
+            limits[fund.code] = float(quote.purchase_limit)
+    return limits
+
+
 def _get_or_create_execution(db: Session, user: User) -> MonthlyExecution:
     month = date.today().strftime("%Y-%m")
     row = (
@@ -121,17 +268,242 @@ def _get_or_create_execution(db: Session, user: User) -> MonthlyExecution:
             {"nasdaq": 1.0, "dividend": 1.0},
         )
 
+    y, m = map(int, month.split("-"))
+    prev_month = f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+
+    prev_row = (
+        db.query(MonthlyExecution)
+        .filter(MonthlyExecution.user_id == user.id, MonthlyExecution.month == prev_month)
+        .first()
+    )
+    execution_detail = None
+    if prev_row and prev_row.execution_detail and isinstance(prev_row.execution_detail, dict):
+        prev_mem = prev_row.execution_detail.get(MEMORY_KEY)
+        if isinstance(prev_mem, dict):
+            execution_detail = copy_memory_to_execution_detail(None, prev_mem)
+
     row = MonthlyExecution(
         user_id=user.id,
         month=month,
         planned_nasdaq_amount=Decimal(str(amounts["nasdaq"])),
         planned_dividend_amount=Decimal(str(amounts["dividend"])),
         planned_bond_amount=Decimal(str(amounts["bond"])),
+        execution_detail=execution_detail,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
     return row
+
+
+@execution_router.get("/plan", response_model=ApiResponse)
+def execution_plan(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    live_nav: bool = Query(False, description="为日定投批量确认实时拉取缺失/过期净值"),
+):
+    config = db.query(UserConfig).filter(UserConfig.user_id == user.id).first()
+    if config is None:
+        return ApiResponse(data={})
+
+    row = _get_or_create_execution(db, user)
+    signals = _load_execution_signals(db, user.id)
+    funds = db.query(Fund).filter(Fund.is_active.is_(True)).all()
+    fund_catalog = {f.code: f.name for f in funds}
+
+    overrides: dict[str, float] | None = None
+    if row.execution_detail and isinstance(row.execution_detail, dict):
+        raw = row.execution_detail.get("amount_overrides")
+        if isinstance(raw, dict):
+            overrides = {k: float(v) for k, v in raw.items()}
+
+    buckets = parse_bucket_config(
+        config.bucket_config,
+        target_nasdaq=float(config.target_nasdaq_pct),
+        target_dividend=float(config.target_dividend_pct),
+        target_bond=float(config.target_bond_pct),
+    )
+    db_limits = _load_purchase_limits(db, all_growth_fund_codes())
+    limit_overrides = _growth_limit_overrides(row)
+    purchase_limits = merge_purchase_limits(db_limits=db_limits, user_overrides=limit_overrides)
+    labels = {b.code: b.name for b in buckets}
+    colors = {b.code: b.color for b in buckets}
+
+    plan = build_execution_plan(
+        month=row.month,
+        budget=float(config.monthly_budget),
+        buckets=buckets,
+        pe_percentile=signals["pe_percentile"],
+        nasdaq_coef=signals["nasdaq_coef"],
+        nasdaq_label=signals["nasdaq_label"],
+        dividend_yield=signals["div_yield"],
+        dividend_coef=signals["div_coef"],
+        dividend_label=signals["div_label"],
+        fund_catalog=fund_catalog,
+        purchase_limits=purchase_limits,
+        amount_overrides=overrides,
+    )
+    plan_dict = plan.to_dict()
+    final_by_bucket = {d["bucket"]: d["final_amount"] for d in plan_dict["derivations"]}
+    as_of = date.today()
+    invested = _invested_by_bucket(db, user.id, row.month)
+    today_invested = _today_invested_by_bucket(db, user.id, as_of)
+    dca_memory = get_daily_dca_memory(db, user.id, row.month)
+    execution_detail = row.execution_detail if isinstance(row.execution_detail, dict) else {}
+    daily = build_daily_execution(
+        as_of=as_of,
+        month=row.month,
+        bucket_amounts=final_by_bucket,
+        invested_by_bucket=invested,
+        today_invested_by_bucket=today_invested,
+        fund_catalog=fund_catalog,
+        purchase_limits=purchase_limits,
+        labels=labels,
+        colors=colors,
+        merged_purchase_limits=purchase_limits,
+        dca_memory=dca_memory,
+        execution_detail=execution_detail,
+    )
+    daily_dict = daily.to_dict()
+    plan_dict["daily"] = daily_dict
+    plan_dict["action_steps"] = build_action_steps(row.month, as_of)
+
+    year, mon = map(int, row.month.split("-"))
+    month_start_info = date_info(first_trading_day(year, mon))
+    month_end_info = date_info(last_trading_day(year, mon))
+    plan_dict["month_start"] = month_start_info
+    plan_dict["month_end"] = month_end_info
+
+    growth_action = daily_dict.get("growth") or {}
+    for bucket in plan_dict.get("bucket_executions", []):
+        if bucket.get("bucket") == "growth":
+            bucket["action_date"] = growth_action.get("action_date")
+            bucket["weekday"] = growth_action.get("weekday")
+            bucket["date_label"] = growth_action.get("date_label")
+        else:
+            bucket["action_date"] = month_end_info["date"]
+            bucket["weekday"] = month_end_info["weekday"]
+            bucket["date_label"] = month_end_info["date_label"]
+
+    fee_catalog = fee_catalog_from_funds(funds)
+    plan_dict = apply_fees_to_plan_dict(plan_dict, fee_catalog)
+    plan_dict = enrich_daily_dca_batch(db, plan_dict, funds, live=live_nav)
+
+    return ApiResponse(data=plan_dict)
+
+
+@execution_router.put("/{month}/growth-limits", response_model=ApiResponse)
+def update_growth_limits(
+    month: str,
+    body: GrowthPurchaseLimitsUpdate,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = (
+        db.query(MonthlyExecution)
+        .filter(MonthlyExecution.user_id == user.id, MonthlyExecution.month == month)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="月度执行单不存在")
+
+    detail = dict(row.execution_detail or {})
+    existing = detail.get("growth_purchase_limits")
+    merged_limits = dict(existing) if isinstance(existing, dict) else {}
+    for code, value in body.limits.items():
+        merged_limits[code] = str(value)
+    detail["growth_purchase_limits"] = merged_limits
+    row.execution_detail = detail
+    db.commit()
+    return ApiResponse(data={"month": month, "growth_purchase_limits": merged_limits})
+
+
+def _execution_row_or_404(db: Session, user_id: int, month: str) -> MonthlyExecution:
+    row = (
+        db.query(MonthlyExecution)
+        .filter(MonthlyExecution.user_id == user_id, MonthlyExecution.month == month)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="月度执行单不存在")
+    return row
+
+
+@execution_router.put("/{month}/daily-dca/confirm", response_model=ApiResponse)
+def confirm_daily_dca_batch(
+    month: str,
+    body: DailyDcaConfirm,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = _execution_row_or_404(db, user.id, month)
+    funds = db.query(Fund).filter(Fund.is_active.is_(True)).all()
+    fund_catalog = {f.code: f.name for f in funds}
+    payload = [
+        {
+            "fund_code": item.fund_code,
+            "fund_name": item.fund_name,
+            "planned_amount": float(item.planned_amount),
+            "selected": item.selected,
+        }
+        for item in body.funds
+    ]
+    active_funds = db.query(Fund).filter(Fund.is_active.is_(True)).all()
+    payload = enrich_funds_for_confirm(db, payload, active_funds, live=True)
+    try:
+        result = confirm_daily_dca(
+            row,
+            action_date=body.action_date,
+            funds=payload,
+            fund_catalog=fund_catalog,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row.step_execute_nasdaq = True
+    db.commit()
+    return ApiResponse(data=result)
+
+
+@execution_router.put("/{month}/daily-dca/cancel", response_model=ApiResponse)
+def cancel_daily_dca_batch(
+    month: str,
+    body: DailyDcaCancel,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = _execution_row_or_404(db, user.id, month)
+    funds = db.query(Fund).filter(Fund.is_active.is_(True)).all()
+    fund_catalog = {f.code: f.name for f in funds}
+    proposed = [
+        {
+            "fund_code": item.fund_code,
+            "fund_name": item.fund_name,
+            "planned_amount": float(item.planned_amount),
+            "selected": item.selected,
+        }
+        for item in body.funds
+    ]
+    result = cancel_daily_dca(
+        row,
+        action_date=body.action_date,
+        stop_memory=body.stop_memory,
+        proposed_funds=proposed,
+        fund_catalog=fund_catalog,
+    )
+    db.commit()
+    return ApiResponse(data=result)
+
+
+@execution_router.put("/{month}/daily-dca/stop", response_model=ApiResponse)
+def stop_daily_dca(
+    month: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = _execution_row_or_404(db, user.id, month)
+    memory = stop_daily_dca_memory(row)
+    db.commit()
+    return ApiResponse(data={"memory": memory})
 
 
 @execution_router.get("/current-month", response_model=ApiResponse)
@@ -162,6 +534,37 @@ def current_month(
             },
         }
     )
+
+
+@execution_router.put("/{month}/amounts", response_model=ApiResponse)
+def update_execution_amounts(
+    month: str,
+    body: ExecutionAmountOverrides,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = (
+        db.query(MonthlyExecution)
+        .filter(MonthlyExecution.user_id == user.id, MonthlyExecution.month == month)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="月度执行单不存在")
+
+    detail = dict(row.execution_detail or {})
+    detail["amount_overrides"] = {k: str(v) for k, v in body.amounts.items()}
+    row.execution_detail = detail
+
+    if "growth" in body.amounts:
+        row.planned_nasdaq_amount = body.amounts["growth"]
+    if "dividend" in body.amounts:
+        row.planned_dividend_amount = body.amounts["dividend"]
+    bond_total = body.amounts.get("bond_long", Decimal(0)) + body.amounts.get("bond_short", Decimal(0))
+    if bond_total > 0:
+        row.planned_bond_amount = bond_total
+
+    db.commit()
+    return ApiResponse(data={"month": month, "amount_overrides": detail["amount_overrides"]})
 
 
 @execution_router.put("/{month}/step/{step_name}", response_model=ApiResponse)
