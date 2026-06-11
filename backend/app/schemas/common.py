@@ -139,6 +139,21 @@ class GrowthPurchaseLimitsUpdate(BaseModel):
     limits: dict[str, Decimal] = Field(default_factory=dict)
 
 
+class CustomGrowthFundAdd(BaseModel):
+    """用户自定义成长档基金。"""
+
+    fund_code: str = Field(min_length=6, max_length=6)
+    fund_name: str | None = None
+    daily_limit: Decimal | None = Field(default=None, description="日限购，默认 ¥300")
+    tier: int = Field(default=2, ge=1, le=4, description="轮询阶梯 1–4")
+
+
+class CustomGrowthFundsUpdate(BaseModel):
+    """批量替换用户自定义成长档基金列表。"""
+
+    funds: list[CustomGrowthFundAdd] = Field(default_factory=list)
+
+
 class DailyDcaFundItem(BaseModel):
     fund_code: str
     fund_name: str | None = None

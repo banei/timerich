@@ -4,6 +4,7 @@ import { api, clearAuth, getRole, setAuth } from "./api";
 import AdminPage from "./pages/AdminPage";
 import DashboardPage from "./pages/DashboardPage";
 import DataPage from "./pages/DataPage";
+import ExecutionLegacyPage from "./pages/ExecutionLegacyPage";
 import ExecutionPage from "./pages/ExecutionPage";
 import HoldingsPage from "./pages/HoldingsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -59,7 +60,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   const nav = [
     { to: "/dashboard", label: "仪表盘" },
     { to: "/holdings", label: "持仓" },
-    { to: "/execution", label: "定投执行" },
+    { to: "/execution", label: "定投" },
+    { to: "/execution/legacy", label: "定投（旧）" },
     { to: "/data", label: "数据管理" },
     { to: "/settings", label: "设置" },
   ];
@@ -71,7 +73,11 @@ function Layout({ children }: { children: React.ReactNode }) {
         <h1>TimeRich</h1>
         <nav>
           {nav.map((item) => (
-            <Link key={item.to} to={item.to} className={location.pathname === item.to ? "active" : ""}>
+            <Link
+              key={item.to}
+              to={item.to}
+              className={location.pathname === item.to ? "active" : ""}
+            >
               {item.label}
             </Link>
           ))}
@@ -131,6 +137,14 @@ export default function App() {
         element={
           <PrivateRoute>
             <HoldingsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/execution/legacy"
+        element={
+          <PrivateRoute>
+            <ExecutionLegacyPage />
           </PrivateRoute>
         }
       />

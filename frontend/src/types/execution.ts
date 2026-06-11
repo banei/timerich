@@ -47,6 +47,15 @@ export type GrowthLimitRow = {
   fund_name: string;
   daily_limit: number | null;
   status: string;
+  note?: string;
+  is_custom?: boolean;
+};
+
+export type CustomGrowthFund = {
+  fund_code: string;
+  fund_name: string;
+  daily_limit: number;
+  tier: number;
 };
 
 export type BucketExecution = {
@@ -158,6 +167,8 @@ export type DailyExecutionContext = {
   other_buckets: DailyBucketPlan[];
   schedule: DailyScheduleRow[];
   growth_limits: GrowthLimitRow[];
+  ndx_roster?: GrowthLimitRow[];
+  custom_growth_funds?: CustomGrowthFund[];
   dca_batch?: DailyDcaBatch;
 };
 

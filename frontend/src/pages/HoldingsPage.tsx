@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
+import { fmtAmount, fmtMoney } from "../utils/formatNumber";
 
 type Fund = { id: number; code: string; name: string };
 type Holding = {
@@ -85,9 +86,9 @@ export default function HoldingsPage() {
             <tr key={h.fund_id}>
               <td>{h.fund_code}</td>
               <td>{h.fund_name}</td>
-              <td className="font-num">¥{h.current_value}</td>
-              <td className="font-num">{h.avg_cost ?? "—"}</td>
-              <td className="font-num">{h.current_nav ?? "—"}</td>
+              <td className="font-num">{fmtMoney(h.current_value)}</td>
+              <td className="font-num">{fmtAmount(h.avg_cost)}</td>
+              <td className="font-num">{fmtAmount(h.current_nav)}</td>
               <td className={`font-num ${(h.profit_pct ?? 0) >= 0 ? "text-up" : "text-down"}`}>
                 {h.profit_pct != null ? `${h.profit_pct >= 0 ? "+" : ""}${(h.profit_pct * 100).toFixed(1)}%` : "—"}
               </td>

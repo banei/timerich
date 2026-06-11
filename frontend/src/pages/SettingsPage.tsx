@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import FundPoolPanel from "../components/settings/FundPoolPanel";
 
 type BucketItem = {
   code: string;
@@ -22,7 +23,7 @@ const BUCKET_HINT: Record<string, string> = {
   bond_short: "短债 / 货基",
 };
 
-export default function SettingsPage() {
+function SettingsForm() {
   const [config, setConfig] = useState<Config | null>(null);
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
@@ -70,7 +71,7 @@ export default function SettingsPage() {
     <form className="card" onSubmit={save}>
       <h3>账户配置</h3>
       <p className="text-muted" style={{ marginBottom: 16 }}>
-        以下五桶名称与比例将直接用于「月度执行」页的计划推导。
+        五桶名称与比例用于月度计划推导；基金频率与限购见下方「基金池」。
       </p>
 
       <div className="form-row">
@@ -139,5 +140,14 @@ export default function SettingsPage() {
       <button type="submit">保存</button>
       {saved && <span className="save-hint">{saved}</span>}
     </form>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <>
+      <SettingsForm />
+      <FundPoolPanel />
+    </>
   );
 }

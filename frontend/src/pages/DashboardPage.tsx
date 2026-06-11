@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { fmtMoney } from "../utils/formatNumber";
 
 type AdviceBlock = {
   headline: string;
@@ -71,11 +72,11 @@ export default function DashboardPage() {
       <div className="grid">
         <div className="stat">
           <label>总资产</label>
-          <strong>¥{summary?.total_value || "0"}</strong>
+          <strong>{fmtMoney(summary?.total_value as number | string | undefined)}</strong>
         </div>
         <div className="stat">
           <label>累计浮盈</label>
-          <strong>¥{summary?.profit || "0"}</strong>
+          <strong>{fmtMoney(summary?.profit as number | string | undefined)}</strong>
         </div>
         <div className="stat">
           <label>浮盈率</label>
@@ -133,9 +134,9 @@ export default function DashboardPage() {
           <AdviceCard block={advice.spillover} />
           {advice.amounts && (
             <div className="amount-row">
-              <span>纳指 ¥{advice.amounts.nasdaq?.toLocaleString()}</span>
-              <span>红利 ¥{advice.amounts.dividend?.toLocaleString()}</span>
-              <span>债券 ¥{advice.amounts.bond?.toLocaleString()}</span>
+              <span>纳指 {fmtMoney(advice.amounts.nasdaq)}</span>
+              <span>红利 {fmtMoney(advice.amounts.dividend)}</span>
+              <span>债券 {fmtMoney(advice.amounts.bond)}</span>
             </div>
           )}
         </div>

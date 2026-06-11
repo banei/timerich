@@ -52,38 +52,39 @@ def test_custom_bucket_names_in_derivation():
     assert lines[0].label == "纳指成长"
 
 
-def test_growth_yifangda_10_spills_to_next_fund():
+def test_growth_tier1_10_spills_to_next_fund():
     plan = plan_growth_bucket(
         100,
-        fund_catalog={"161130": "易方达纳指100联接A", "018043": "天弘纳斯达克100A"},
-        purchase_limits={"161130": 10, "018043": 300},
+        fund_catalog={"270042": "广发纳指100联接A", "000834": "大成纳指100联接A"},
+        purchase_limits={"270042": 10, "000834": 300},
     )
     assert len(plan.funds) == 2
-    assert plan.funds[0].fund_code == "161130"
+    assert plan.funds[0].fund_code == "270042"
     assert plan.funds[0].planned_amount == 10
-    assert plan.funds[1].fund_code == "018043"
+    assert plan.funds[1].fund_code == "000834"
     assert plan.funds[1].planned_amount == 90
     assert sum(f.planned_amount for f in plan.funds) == 100
 
 
-def test_growth_yifangda_paused_skips_to_next():
+def test_growth_paused_skips_to_next():
     plan = plan_growth_bucket(
         50,
-        fund_catalog={"161130": "易方达纳指100联接A", "018043": "天弘纳斯达克100A"},
-        purchase_limits={"161130": 0, "018043": 300},
+        fund_catalog={"270042": "广发纳指100联接A", "000834": "大成纳指100联接A"},
+        purchase_limits={"270042": 0, "000834": 300},
     )
     assert len(plan.funds) == 1
-    assert plan.funds[0].fund_code == "018043"
+    assert plan.funds[0].fund_code == "000834"
     assert plan.funds[0].planned_amount == 50
 
 
-def test_growth_default_limit_161130_is_10():
+def test_growth_default_limit_tier1_is_10():
     limits = merge_purchase_limits()
     plan = plan_growth_bucket(
         80,
-        fund_catalog={"161130": "易方达纳指100联接A", "018043": "天弘纳斯达克100A"},
+        fund_catalog={"270042": "广发纳指100联接A", "000834": "大成纳指100联接A"},
         purchase_limits=limits,
     )
+    assert plan.funds[0].fund_code == "270042"
     assert plan.funds[0].planned_amount == 10
     assert sum(f.planned_amount for f in plan.funds) == 80
 
@@ -91,13 +92,13 @@ def test_growth_default_limit_161130_is_10():
 def test_growth_ladder_respects_purchase_limit():
     plan = plan_growth_bucket(
         2000,
-        fund_catalog={"161130": "易方达纳指100联接A", "018043": "天弘纳斯达克100A"},
-        purchase_limits={"161130": 300},
+        fund_catalog={"270042": "广发纳指100联接A", "000834": "大成纳指100联接A"},
+        purchase_limits={"270042": 300},
     )
     codes = [f.fund_code for f in plan.funds]
-    assert codes[0] == "161130"
+    assert codes[0] == "270042"
     assert plan.funds[0].planned_amount == 300
-    assert "018043" in codes
+    assert "000834" in codes
     assert sum(f.planned_amount for f in plan.funds) == 2000
 
 

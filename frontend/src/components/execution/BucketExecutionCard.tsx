@@ -1,15 +1,12 @@
 import { useState } from "react";
 import type { BucketExecution } from "../../types/execution";
+import { fmtMoney } from "../../utils/formatNumber";
 import ActionDateTag from "./ActionDateTag";
 import FundFeeSummary from "./FundFeeSummary";
 
 type Props = {
   bucket: BucketExecution;
 };
-
-function fmt(n: number) {
-  return `¥${n.toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
-}
 
 export default function BucketExecutionCard({ bucket }: Props) {
   const [open, setOpen] = useState(bucket.total_amount > 0);
@@ -24,7 +21,7 @@ export default function BucketExecutionCard({ bucket }: Props) {
           </span>
           <ActionDateTag dateLabel={bucket.date_label} actionDate={bucket.action_date} />
         </span>
-        <span className="font-num">{fmt(bucket.total_amount)}</span>
+        <span className="font-num">{fmtMoney(bucket.total_amount)}</span>
         <span className="bucket-toggle">{open ? "收起" : "展开"}</span>
       </button>
 

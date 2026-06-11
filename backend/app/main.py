@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.guardian import guardian
-from app.routers import auth, config, dashboard, holdings
+from app.routers import auth, config, dashboard, execution_v2, holdings
 from app.scheduler import create_scheduler
 
 settings = get_settings()
@@ -39,6 +39,7 @@ app.include_router(auth.users_router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(holdings.router, prefix="/api/v1")
 app.include_router(holdings.execution_router, prefix="/api/v1")
+app.include_router(execution_v2.router, prefix="/api/v1")
 app.include_router(config.router, prefix="/api/v1")
 app.include_router(config.data_router, prefix="/api/v1")
 

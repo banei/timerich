@@ -13,11 +13,12 @@
   --border-dim: rgba(99, 120, 180, 0.14);
   --border-mid: rgba(99, 120, 180, 0.28);
   --border-focus: rgba(58, 191, 248, 0.5);
+  --border: var(--border-dim);
 
-  --text-primary: #e2e8f5;
-  --text-secondary: #9aaecf;
-  --text-muted: #7c8db0;
-  --text-disabled: #4a5d7a;
+  --text-primary: #eef2fb;
+  --text-secondary: #b8c8e8;
+  --text-muted: #94a8cc;
+  --text-disabled: #5c7094;
 
   --positive: #34d399;
   --positive-bg: #062215;
@@ -279,6 +280,37 @@ button.secondary:hover:not(:disabled) {
   border-color: var(--border-mid);
 }
 
+/* 幽灵/文字按钮：避免继承主按钮深色字在深色背景上不可读 */
+button.exec-v2-preset-btn,
+button.exec-v2-summary,
+button.ghost {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-mid);
+  font-weight: 400;
+}
+
+button.exec-v2-preset-btn:hover:not(:disabled),
+button.ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+button.exec-v2-summary {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+button.exec-v2-summary:hover:not(:disabled) {
+  background: transparent;
+  color: var(--accent-hover);
+}
+
 /* 表单控件 */
 input,
 select,
@@ -308,6 +340,12 @@ textarea:focus {
 select option {
   background: var(--bg-elevated);
   color: var(--text-primary);
+}
+
+input:read-only {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  cursor: default;
 }
 
 .form-row {
@@ -960,8 +998,10 @@ tbody tr:last-child td {
   gap: 8px;
 }
 
-.dca-total strong {
-  color: var(--text-primary);
+.ndx-roster-table {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow: auto;
 }
 
 .daily-schedule {
@@ -1020,6 +1060,61 @@ tbody tr:last-child td {
 
 .growth-limit-details {
   margin-top: 12px;
+}
+
+.custom-fund-details {
+  margin-top: 12px;
+}
+
+.custom-fund-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.custom-fund-code {
+  width: 88px;
+}
+
+.custom-fund-name {
+  flex: 1;
+  min-width: 140px;
+}
+
+.custom-fund-limit {
+  width: 88px;
+}
+
+.custom-fund-tier {
+  width: 140px;
+}
+
+.custom-fund-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-fund-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border-radius: 6px;
+}
+
+.custom-fund-badge {
+  margin-left: 6px;
+  font-size: 10px;
+  vertical-align: middle;
 }
 
 .growth-limit-editor {
@@ -1108,6 +1203,499 @@ tbody tr:last-child td {
   margin-left: 8px;
   color: var(--positive);
   font-size: 13px;
+}
+
+/* 定投执行 v2 */
+.exec-v2-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 920px;
+  color: var(--text-primary);
+}
+
+.exec-v2-section {
+  padding: 20px;
+  color: var(--text-primary);
+}
+
+.exec-v2-section .text-muted,
+.exec-v2-section .daily-hint {
+  color: var(--text-muted);
+}
+
+.exec-v2-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.exec-v2-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.exec-v2-bucket {
+  border: 1px solid var(--border-mid);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.exec-v2-bucket-probe {
+  border-style: dashed;
+  border-color: var(--warning);
+}
+
+.exec-v2-bucket-skip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: var(--bg-elevated);
+}
+
+.exec-v2-bucket-head {
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.exec-v2-bucket-head strong {
+  color: var(--text-primary);
+}
+
+.exec-v2-bucket-head .bucket-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.exec-v2-fund-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exec-v2-fund-row {
+  display: grid;
+  grid-template-columns: auto 64px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  padding: 6px 4px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.exec-v2-fund-off {
+  opacity: 0.72;
+}
+
+.exec-v2-fund-off .exec-v2-name,
+.exec-v2-fund-off .exec-v2-amt {
+  color: var(--text-muted);
+}
+
+.exec-v2-code {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.exec-v2-name {
+  color: var(--text-primary);
+}
+
+.exec-v2-amt {
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.exec-v2-limit {
+  font-size: 12px;
+  min-width: 72px;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.exec-v2-fee {
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+.exec-v2-submit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-mid);
+}
+
+.exec-v2-submit-bar button:first-child {
+  min-width: 180px;
+}
+
+.exec-v2-empty h2 {
+  margin: 0 0 8px;
+}
+
+.exec-v2-summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  color: var(--text-primary);
+}
+
+.exec-v2-summary-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exec-v2-sync-btn {
+  flex-shrink: 0;
+}
+
+.exec-v2-sync-msg {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.exec-v2-pending-fund {
+  min-width: 12em;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.exec-v2-pending-fund .font-num {
+  margin-right: 4px;
+}
+
+.exec-v2-pending-section .exec-v2-empty-hint {
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+
+.exec-v2-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 12px;
+  color: var(--text-primary);
+}
+
+.exec-v2-table th,
+.exec-v2-table td {
+  padding: 8px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--text-primary);
+}
+
+.exec-v2-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.exec-v2-pending-row {
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.exec-v2-mini-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.exec-v2-confirm-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.exec-v2-confirm-form input,
+.exec-v2-confirm-form select {
+  max-width: 120px;
+}
+
+.exec-v2-history-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.exec-v2-filter-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.exec-v2-edit-modal {
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.exec-v2-amount-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.exec-v2-amount-picker-compact {
+  flex: 1;
+  min-width: 200px;
+}
+
+.exec-v2-amount-input {
+  width: 72px;
+  padding: 4px 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-mid);
+}
+
+.exec-v2-amount-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.exec-v2-preset-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  min-width: 36px;
+  border-radius: 4px;
+}
+
+.exec-v2-preset-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(58, 191, 248, 0.15);
+}
+
+.exec-v2-freq-select {
+  font-size: 12px;
+  max-width: 140px;
+  padding: 4px 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-mid);
+}
+
+.exec-v2-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exec-v2-config-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-mid);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.exec-v2-config-paused {
+  opacity: 0.78;
+}
+
+.exec-v2-config-paused .exec-v2-name {
+  color: var(--text-muted);
+}
+
+.exec-v2-config-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  flex: 1;
+}
+
+.exec-v2-config-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 2;
+}
+
+.exec-v2-today-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(58, 191, 248, 0.25);
+  color: #7dd3fc;
+}
+
+.exec-v2-subhead {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.exec-v2-add-fund {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-mid);
+  color: var(--text-primary);
+}
+
+.exec-v2-add-fund h4 {
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.exec-v2-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.exec-v2-add-code {
+  width: 88px;
+}
+
+.exec-v2-add-name {
+  flex: 1;
+  min-width: 160px;
+}
+
+.exec-v2-fund-row-edit {
+  display: block;
+  cursor: default;
+  padding: 10px 4px;
+  color: var(--text-primary);
+}
+
+.exec-v2-fund-check {
+  display: inline-flex;
+  margin-right: 8px;
+  vertical-align: top;
+}
+
+.exec-v2-fund-main {
+  display: inline-block;
+  width: calc(100% - 100px);
+  vertical-align: top;
+}
+
+.exec-v2-fund-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.exec-v2-fund-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.exec-v2-lookup-hint {
+  color: var(--text-secondary);
+}
+
+.exec-v2-date-header {
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.exec-v2-date-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.exec-v2-date-picker label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.exec-v2-date-input {
+  width: auto;
+  max-width: 160px;
+  padding: 6px 10px;
+}
+
+.exec-v2-backfill-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  border-radius: 6px;
+  background: rgba(58, 191, 248, 0.1);
+  border: 1px solid rgba(58, 191, 248, 0.25);
+}
+
+.exec-v2-select-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.exec-v2-select-count {
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+.exec-v2-bucket-submitted {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
+.exec-v2-fund-submitted {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 4px;
+  color: var(--text-secondary);
+}
+
+.exec-v2-submitted-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(148, 168, 204, 0.2);
+  color: var(--text-muted);
+}
+
+/* 待确认行：保证文字可读 */
+.exec-v2-pending-row td,
+.exec-v2-pending-row span {
+  color: var(--text-primary);
 }
 
 /* 无障碍：减少动效 */

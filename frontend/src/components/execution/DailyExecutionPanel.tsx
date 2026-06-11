@@ -1,8 +1,11 @@
 import type { DailyBucketPlan, DailyExecutionContext } from "../../types/execution";
+import { fmtMoney } from "../../utils/formatNumber";
 import ActionDateTag from "./ActionDateTag";
+import CustomFundEditor from "./CustomFundEditor";
 import DailyDcaBatchPanel from "./DailyDcaBatchPanel";
 import FundFeeSummary from "./FundFeeSummary";
 import GrowthLimitEditor from "./GrowthLimitEditor";
+import NasdaqFundRoster from "./NasdaqFundRoster";
 
 type Props = {
   daily: DailyExecutionContext;
@@ -10,10 +13,6 @@ type Props = {
   onReload: () => void;
   onRefreshNav?: () => void;
 };
-
-function fmt(n: number) {
-  return `¥${n.toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
-}
 
 function ProgressBar({ invested, planned }: { invested: number; planned: number }) {
   const pct = planned > 0 ? Math.min(100, (invested / planned) * 100) : 0;
@@ -48,23 +47,23 @@ export default function DailyExecutionPanel({ daily, month, onReload, onRefreshN
       <div className="daily-stats grid">
         <div className="stat daily-stat">
           <label>本月计划</label>
-          <strong className="font-num">{fmt(g.monthly_planned)}</strong>
+          <strong className="font-num">{fmtMoney(g.monthly_planned)}</strong>
         </div>
         <div className="stat daily-stat">
           <label>已投入</label>
-          <strong className="font-num">{fmt(g.monthly_invested)}</strong>
+          <strong className="font-num">{fmtMoney(g.monthly_invested)}</strong>
         </div>
         <div className="stat daily-stat">
           <label>月剩余</label>
-          <strong className="font-num">{fmt(g.monthly_remaining)}</strong>
+          <strong className="font-num">{fmtMoney(g.monthly_remaining)}</strong>
         </div>
         <div className="stat daily-stat">
           <label>今日目标</label>
-          <strong className={`font-num ${todayDone ? "text-up" : ""}`}>{fmt(g.today_target)}</strong>
+          <strong className={`font-num ${todayDone ? "text-up" : ""}`}>{fmtMoney(g.today_target)}</strong>
         </div>
         <div className="stat daily-stat">
           <label>今日已买</label>
-          <strong className="font-num">{fmt(g.today_invested)}</strong>
+          <strong className="font-num">{fmtMoney(g.today_invested)}</strong>
         </div>
         <div className="stat daily-stat">
           <label>剩余交易日</label>
@@ -96,7 +95,7 @@ export default function DailyExecutionPanel({ daily, month, onReload, onRefreshN
             {g.funds.map((f) => (
               <span key={f.fund_code} className="limit-chip">
                 {f.fund_code}{" "}
-                {f.purchase_status === "paused" ? "暂停" : f.daily_limit != null ? fmt(f.daily_limit) : "不限"}
+                {f.purchase_status === "paused" ? "暂停" : f.daily_limit != null ? fmtMoney(f.daily_limit) : "不限"}
               </span>
             ))}
           </div>
@@ -104,9 +103,29 @@ export default function DailyExecutionPanel({ daily, month, onReload, onRefreshN
         </>
       )}
 
+      {daily.ndx_roster && daily.ndx_roster.length > 0 && (
+        <NasdaqFundRoster roster={daily.ndx_roster} />
+      )}
+
+      <details className="daily-schedule custom-fund-details" open>
+        <summary>
+          自定义基金
+          {daily.custom_growth_funds && daily.custom_growth_funds.length > 0
+            ? `（${daily.custom_growth_funds.length} 只）`
+            : ""}
+        </summary>
+        <CustomFundEditor
+          month={month}
+          funds={daily.custom_growth_funds || []}
+          onSaved={onReload}
+        />
+      </details>
+
       {daily.growth_limits?.length > 0 && (
-        <details className="daily-schedule growth-limit-details">
-          <summary>纳指联接日限购设置（凑额度轮询顺序见上表）</summary>
+        <details className="daily-schedule growth-limit-details" open>
+          <summary>
+            纳指联接日限购设置（共 {daily.growth_limits.length} 只，含标普备胎；0=暂停）
+          </summary>
           <GrowthLimitEditor month={month} limits={daily.growth_limits} onSaved={onReload} />
         </details>
       )}
@@ -121,7 +140,7 @@ export default function DailyExecutionPanel({ daily, month, onReload, onRefreshN
                 className={`schedule-row ${row.is_today ? "schedule-today" : ""}`}
               >
                 <span className="font-num">{row.date_label || row.date}</span>
-                <span className="font-num">{fmt(row.target_amount)}</span>
+                <span className="font-num">{fmtMoney(row.target_amount)}</span>
                 {row.is_today && <span className="badge">今日</span>}
               </div>
             ))}
@@ -147,11 +166,11 @@ export default function DailyExecutionPanel({ daily, month, onReload, onRefreshN
                     {b.name}
                   </span>
                   <span className="font-num text-muted">
-                    {fmt(b.monthly_invested)} / {fmt(b.monthly_planned)}
+                    {fmtMoney(b.monthly_invested)} / {fmtMoney(b.monthly_planned)}
                   </span>
                   {b.date_label && <ActionDateTag dateLabel={b.date_label} actionDate={b.action_date} />}
                   {b.monthly_remaining > 0 && (
-                    <span className="text-warn">待投 {fmt(b.monthly_remaining)}</span>
+                    <span className="text-warn">待投 {fmtMoney(b.monthly_remaining)}</span>
                   )}
                 </div>
               ))}

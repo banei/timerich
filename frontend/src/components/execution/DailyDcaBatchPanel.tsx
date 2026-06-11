@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import type { DailyDcaBatch, DailyDcaBatchItem } from "../../types/execution";
+import { fmtAmount, fmtMoney } from "../../utils/formatNumber";
 
 type Props = {
   month: string;
@@ -9,12 +10,8 @@ type Props = {
   onRefreshNav?: () => void;
 };
 
-function fmtMoney(n: number) {
-  return `¥${n.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
-}
-
 function fmtNav(n: number) {
-  return n.toLocaleString("zh-CN", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  return fmtAmount(n);
 }
 
 function fmtShares(n: number) {

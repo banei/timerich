@@ -539,21 +539,26 @@ def _fund_name_lookup(fund_code: str, fund_catalog: dict[str, str] | None) -> st
     return fund_code
 
 
-def _ladder_for_preferred(preferred_fund_codes: list[str] | None) -> list[list[str]]:
+def _ladder_for_preferred(
+    preferred_fund_codes: list[str] | None,
+    *,
+    base_ladder: list[list[str]] | None = None,
+) -> list[list[str]]:
+    ladder_source = base_ladder or GROWTH_FUND_LADDER
     if not preferred_fund_codes:
-        return GROWTH_FUND_LADDER
+        return ladder_source
     pref_order = {code: idx for idx, code in enumerate(preferred_fund_codes)}
     pref_set = set(preferred_fund_codes)
     ladder: list[list[str]] = []
-    for tier in GROWTH_FUND_LADDER:
+    for tier in ladder_source:
         codes = sorted([c for c in tier if c in pref_set], key=lambda c: pref_order[c])
         if codes:
             ladder.append(codes)
-    in_ladder = {c for tier in GROWTH_FUND_LADDER for c in tier}
+    in_ladder = {c for tier in ladder_source for c in tier}
     extras = [c for c in preferred_fund_codes if c not in in_ladder]
     if extras:
         ladder.append(extras)
-    return ladder if ladder else GROWTH_FUND_LADDER
+    return ladder if ladder else ladder_source
 
 
 def plan_growth_bucket(
@@ -564,13 +569,15 @@ def plan_growth_bucket(
     name: str | None = None,
     color: str | None = None,
     preferred_fund_codes: list[str] | None = None,
+    growth_ladder: list[list[str]] | None = None,
 ) -> BucketExecutionPlan:
     """成长桶：按阶梯轮询多只纳指联接，日限购内填满后由下一只承接。"""
     limits = purchase_limits or {}
     remaining = Decimal(str(amount))
     funds: list[FundAllocation] = []
     notes: list[str] = []
-    ladder = _ladder_for_preferred(preferred_fund_codes)
+    base_ladder = growth_ladder or GROWTH_FUND_LADDER
+    ladder = _ladder_for_preferred(preferred_fund_codes, base_ladder=base_ladder)
 
     if remaining <= 0:
         return BucketExecutionPlan(

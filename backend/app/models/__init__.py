@@ -279,3 +279,56 @@ class BackfillStatus(Base):
     progress_pct: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(3), default=utcnow, onupdate=utcnow)
+
+
+class BucketFundConfig(Base):
+    """用户基金池：频率、限购、正式/试探类型。"""
+
+    __tablename__ = "bucket_fund_config"
+    __table_args__ = (
+        UniqueConstraint("user_id", "bucket_code", "fund_code", name="uq_bucket_fund_user"),
+        Index("ix_bucket_fund_user", "user_id"),
+        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    bucket_code: Mapped[str] = mapped_column(String(32))
+    fund_code: Mapped[str] = mapped_column(String(16))
+    fund_name: Mapped[str] = mapped_column(String(128))
+    daily_limit: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), default=Decimal("0"))
+    frequency: Mapped[str] = mapped_column(String(32), default="daily")  # daily | weekly_MON | monthly_10 | manual
+    buy_type: Mapped[str] = mapped_column(String(16), default="scheduled")  # scheduled | probe
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active | paused
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(3), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(3), default=utcnow, onupdate=utcnow)
+
+
+class InvestmentRecord(Base):
+    """定投执行记录：提交 → 待确认 → 写入 Transaction。"""
+
+    __tablename__ = "investment_record"
+    __table_args__ = (
+        Index("ix_invest_record_user_date", "user_id", "date"),
+        Index("ix_invest_record_status", "user_id", "status"),
+        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    date: Mapped[date] = mapped_column(Date)
+    fund_code: Mapped[str] = mapped_column(String(16))
+    fund_name: Mapped[str] = mapped_column(String(128))
+    bucket_code: Mapped[str] = mapped_column(String(32))
+    record_type: Mapped[str] = mapped_column(String(16))  # scheduled | probe | manual
+    planned_amount: Mapped[Decimal] = mapped_column(DECIMAL(18, 4))
+    submitted_amount: Mapped[Decimal] = mapped_column(DECIMAL(18, 4))
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | confirmed | failed | partial
+    confirmed_amount: Mapped[Decimal | None] = mapped_column(DECIMAL(18, 4), nullable=True)
+    confirmed_shares: Mapped[Decimal | None] = mapped_column(DECIMAL(18, 6), nullable=True)
+    confirmed_nav: Mapped[Decimal | None] = mapped_column(DECIMAL(18, 4), nullable=True)
+    confirmed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    frequency: Mapped[str] = mapped_column(String(32), default="daily")
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(3), default=utcnow)

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { DateInfo, DerivationLine } from "../../types/execution";
+import { fmtMoney } from "../../utils/formatNumber";
 import ActionDateTag from "./ActionDateTag";
 
 type Props = {
@@ -7,10 +8,6 @@ type Props = {
   onSave?: (amounts: Record<string, number>) => Promise<void>;
   actionDate?: DateInfo;
 };
-
-function fmt(n: number) {
-  return `¥${n.toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
-}
 
 export default function AmountDerivationTable({ derivations, onSave, actionDate }: Props) {
   const [editing, setEditing] = useState<Record<string, string>>({});
@@ -58,9 +55,9 @@ export default function AmountDerivationTable({ derivations, onSave, actionDate 
         {derivations.map((d) => (
           <div key={d.bucket} className="deriv-row">
             <span>{d.label}</span>
-            <span className="font-num">{fmt(d.base_amount)}</span>
-            <span className="font-num">{fmt(d.after_coefficient)}</span>
-            <span className="font-num text-up">{d.spillover_in > 0 ? `+${fmt(d.spillover_in)}` : "—"}</span>
+            <span className="font-num">{fmtMoney(d.base_amount)}</span>
+            <span className="font-num">{fmtMoney(d.after_coefficient)}</span>
+            <span className="font-num text-up">{d.spillover_in > 0 ? `+${fmtMoney(d.spillover_in)}` : "—"}</span>
             <span className="font-num">
               {d.editable && onSave ? (
                 <input
@@ -71,7 +68,7 @@ export default function AmountDerivationTable({ derivations, onSave, actionDate 
                   onChange={(e) => setEditing({ ...editing, [d.bucket]: e.target.value })}
                 />
               ) : (
-                fmt(d.final_amount)
+                fmtMoney(d.final_amount)
               )}
             </span>
           </div>

@@ -43,7 +43,7 @@ export default function GrowthLimitEditor({ month, limits, onSaved }: Props) {
   return (
     <form className="growth-limit-editor" onSubmit={onSubmit}>
       <p className="text-muted daily-hint">
-        按 App 实际限额调整：0 = 暂停申购；易方达 161130 常态约 ¥10/日。
+        按 App 实际限额调整：0 = 暂停申购。当前可买名单见上方「纳指100候选名单」。
       </p>
       <div className="limit-editor-grid">
         {limits.map((row) => (

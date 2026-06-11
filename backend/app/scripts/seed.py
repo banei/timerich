@@ -6,6 +6,11 @@ from app.auth import hash_password
 from app.database import SessionLocal
 from app.models import AssetCategory, Fund, User, UserConfig
 from app.services.bucket_config import bucket_config_to_json, default_buckets
+from app.services.growth_limits import (
+    NASDAQ100_FUND_META,
+    RETIRED_NDX_CODES,
+    SP500_BACKUP_META,
+)
 
 CATEGORIES = [
     (1, "NASDAQ", "纳指100"),
@@ -14,20 +19,31 @@ CATEGORIES = [
     (4, "BOND", "债券"),
 ]
 
+# (code, name, category_id, fund_type, priority, annual_fee, purchase_fee)
 FUNDS = [
-    ("161130", "易方达纳斯达克100联接A", 1, "otc_link", 5, "0.008500", "0.001200"),
-    ("018043", "天弘纳斯达克100A", 1, "otc_link", 5, "0.007500", "0.001200"),
-    ("270042", "广发纳指100联接A", 1, "otc_link", 4, "0.009500", "0.001200"),
-    ("000834", "大成纳斯达克100联接A", 1, "otc_link", 4, "0.010000", "0.001200"),
-    ("160213", "国泰纳斯达克100联接A", 1, "otc_link", 4, "0.010000", "0.001200"),
-    ("018959", "华夏纳斯达克100联接A", 1, "otc_link", 3, "0.008500", "0.001200"),
-    ("040046", "华安纳斯达克100联接A", 1, "otc_link", 3, "0.010000", "0.001200"),
-    ("019547", "嘉实纳斯达克100联接A", 1, "otc_link", 3, "0.007500", "0.001200"),
-    ("017437", "摩根纳斯达克100A", 1, "otc_link", 2, "0.008000", "0.001200"),
-    ("019870", "招商纳斯达克100联接A", 1, "otc_link", 2, "0.007500", "0.001200"),
+    # 纳指100 — 与 growth_limits.NASDAQ100_FUND_META 对齐
+    ("270042", "广发纳斯达克100ETF联接(QDII)A", 1, "otc_link", 5, "0.009500", "0.001200"),
+    ("000834", "大成纳斯达克100ETF联接(QDII)A", 1, "otc_link", 5, "0.010000", "0.001200"),
+    ("040046", "华安纳斯达克100ETF联接(QDII)A", 1, "otc_link", 4, "0.010000", "0.001200"),
+    ("019547", "招商纳斯达克100ETF发起式联接(QDII)A", 1, "otc_link", 4, "0.007500", "0.001200"),
+    ("019524", "华泰柏瑞纳斯达克100ETF发起式联接(QDII)A", 1, "otc_link", 4, "0.008000", "0.001200"),
+    ("019441", "万家纳斯达克100指数发起式(QDII)A", 1, "otc_link", 3, "0.008000", "0.001200"),
+    ("539001", "建信纳斯达克100指数(QDII)A", 1, "otc_link", 3, "0.008000", "0.001200"),
+    ("018966", "汇添富纳斯达克100ETF发起式联接(QDII)A", 1, "otc_link", 3, "0.008000", "0.001200"),
+    ("019172", "摩根纳斯达克100指数(QDII)A", 1, "otc_link", 3, "0.008000", "0.001200"),
+    ("019736", "宝盈纳斯达克100指数发起(QDII)A", 1, "otc_link", 3, "0.008000", "0.001200"),
+    ("016452", "南方纳斯达克100指数发起(QDII)A", 1, "otc_link", 3, "0.008000", "0.001200"),
+    ("017436", "华宝纳斯达克精选股票发起(QDII)A", 1, "otc_link", 2, "0.008000", "0.001200"),
+    ("161130", "易方达纳斯达克100ETF联接(QDII-LOF)A", 1, "otc_link", 5, "0.008500", "0.001200"),
+    ("018043", "天弘纳斯达克100指数发起(QDII)A", 1, "otc_link", 5, "0.007500", "0.001200"),
+    ("160213", "国泰纳斯达克100指数", 1, "otc_link", 4, "0.010000", "0.001200"),
+    ("015299", "华夏纳斯达克100ETF发起式联接(QDII)A", 1, "otc_link", 3, "0.008500", "0.001200"),
+    ("016532", "嘉实纳斯达克100ETF发起联接(QDII)A", 1, "otc_link", 3, "0.007500", "0.001200"),
+    # 标普500备胎
     ("050025", "博时标普500ETF联接A", 2, "otc_link", 5, "0.008000", "0.001000"),
     ("118002", "易方达标普500人民币A", 2, "otc_link", 5, "0.008000", "0.001000"),
     ("096001", "大成标普500等权重A", 2, "otc_link", 4, "0.009000", "0.001000"),
+    # 红利 / 债券
     ("007466", "华泰柏瑞红利低波联接A", 3, "otc_link", 5, "0.006000", "0.000800"),
     ("563020", "易方达红利低波ETF", 3, "etf", 5, "0.002000", "0.000000"),
     ("512890", "华泰柏瑞红利低波ETF", 3, "etf", 4, "0.006000", "0.000000"),
@@ -43,7 +59,8 @@ def seed_fund_pool(db: Session) -> None:
     db.commit()
 
     for code, name, cat_id, ftype, priority, annual, purchase in FUNDS:
-        if db.query(Fund).filter(Fund.code == code).first() is None:
+        row = db.query(Fund).filter(Fund.code == code).first()
+        if row is None:
             db.add(
                 Fund(
                     code=code,
@@ -56,6 +73,24 @@ def seed_fund_pool(db: Session) -> None:
                     is_active=True,
                 )
             )
+        else:
+            row.name = name
+            row.category_id = cat_id
+            row.fund_type = ftype
+            row.priority = priority
+            row.is_active = True
+
+    for code in RETIRED_NDX_CODES:
+        row = db.query(Fund).filter(Fund.code == code).first()
+        if row:
+            row.is_active = False
+
+    # 同步 growth_limits 元数据中的名称
+    for code, meta in {**NASDAQ100_FUND_META, **SP500_BACKUP_META}.items():
+        row = db.query(Fund).filter(Fund.code == code).first()
+        if row and row.name != meta["name"]:
+            row.name = meta["name"]
+
     db.commit()
 
 

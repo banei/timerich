@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Fund, FundQuote, MonthlyCoefficient, MonthlyExecution, PEHistory, Transaction, User, UserConfig
+from app.models import AssetCategory, Fund, FundQuote, MonthlyCoefficient, MonthlyExecution, PEHistory, Transaction, User, UserConfig
 from app.schemas.common import (
     ApiResponse,
+    CustomGrowthFundAdd,
+    CustomGrowthFundsUpdate,
     DailyDcaCancel,
     DailyDcaConfirm,
     ExecutionAmountOverrides,
@@ -35,7 +37,16 @@ from app.services.execution_calendar import build_action_steps, date_info, first
 from app.services.execution_planner import BOND_FUNDS, DIVIDEND_FUNDS, build_execution_plan
 from app.services.fund_fees import apply_fees_to_plan_dict, fee_catalog_from_funds
 from app.services.fund_nav import enrich_daily_dca_batch, enrich_funds_for_confirm
-from app.services.growth_limits import all_growth_fund_codes, merge_purchase_limits
+from app.services.growth_limits import (
+    CUSTOM_GROWTH_FUNDS_KEY,
+    all_growth_fund_codes,
+    all_growth_fund_codes_with_custom,
+    merge_custom_limits,
+    merge_purchase_limits,
+    normalize_fund_code,
+    parse_custom_growth_funds,
+)
+from app.services.fund_purchase import fetch_em_purchase_for_codes
 from app.services.holdings import holdings_with_funds, recalculate_holdings
 from app.services.market_data import MarketDataService
 from app.services.percentile import calculate_percentile
@@ -198,10 +209,19 @@ def _invested_for_funds(
     return float(total or 0)
 
 
-def _invested_by_bucket(db: Session, user_id: int, month: str) -> dict[str, float]:
+def _invested_by_bucket(
+    db: Session,
+    user_id: int,
+    month: str,
+    *,
+    extra_growth_codes: list[str] | None = None,
+) -> dict[str, float]:
     start, end = _month_date_range(month)
+    growth_codes = all_growth_fund_codes_with_custom(
+        [{"fund_code": c} for c in (extra_growth_codes or [])]
+    )
     return {
-        "growth": _invested_for_funds(db, user_id, all_growth_fund_codes(), start, end),
+        "growth": _invested_for_funds(db, user_id, growth_codes, start, end),
         "dividend": _invested_for_funds(db, user_id, list(DIVIDEND_FUNDS.values()), start, end),
         "gold": _invested_for_funds(db, user_id, ["518880"], start, end),
         "bond_long": _invested_for_funds(db, user_id, [BOND_FUNDS["long"]], start, end),
@@ -209,11 +229,20 @@ def _invested_by_bucket(db: Session, user_id: int, month: str) -> dict[str, floa
     }
 
 
-def _today_invested_by_bucket(db: Session, user_id: int, as_of: date) -> dict[str, float]:
+def _today_invested_by_bucket(
+    db: Session,
+    user_id: int,
+    as_of: date,
+    *,
+    extra_growth_codes: list[str] | None = None,
+) -> dict[str, float]:
     start = as_of
     end = as_of + timedelta(days=1)
+    growth_codes = all_growth_fund_codes_with_custom(
+        [{"fund_code": c} for c in (extra_growth_codes or [])]
+    )
     return {
-        "growth": _invested_for_funds(db, user_id, all_growth_fund_codes(), start, end),
+        "growth": _invested_for_funds(db, user_id, growth_codes, start, end),
         "dividend": _invested_for_funds(db, user_id, list(DIVIDEND_FUNDS.values()), start, end),
         "gold": _invested_for_funds(db, user_id, ["518880"], start, end),
         "bond_long": _invested_for_funds(db, user_id, [BOND_FUNDS["long"]], start, end),
@@ -228,6 +257,64 @@ def _growth_limit_overrides(row: MonthlyExecution) -> dict[str, float]:
     if not isinstance(raw, dict):
         return {}
     return {str(k): float(v) for k, v in raw.items()}
+
+
+def _custom_growth_funds(row: MonthlyExecution) -> list[dict]:
+    if not row.execution_detail or not isinstance(row.execution_detail, dict):
+        return []
+    return parse_custom_growth_funds(row.execution_detail)
+
+
+def _ensure_growth_fund(db: Session, code: str, name: str) -> Fund:
+    row = db.query(Fund).filter(Fund.code == code).first()
+    if row:
+        if name and name != code and row.name in {code, ""}:
+            row.name = name
+        if not row.is_active:
+            row.is_active = True
+        return row
+    cat = db.query(AssetCategory).filter(AssetCategory.code == "NASDAQ").first()
+    cat_id = cat.id if cat else 1
+    row = Fund(
+        code=code,
+        name=name or code,
+        category_id=cat_id,
+        fund_type="otc_link",
+        priority=3,
+        annual_fee_rate=Decimal("0.010000"),
+        purchase_fee_rate=Decimal("0.001200"),
+        is_active=True,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _normalize_custom_fund_item(body: CustomGrowthFundAdd, fund_catalog: dict[str, str]) -> dict:
+    code = normalize_fund_code(body.fund_code)
+    name = (body.fund_name or "").strip() or fund_catalog.get(code) or code
+    daily_limit = float(body.daily_limit) if body.daily_limit is not None else 300.0
+    return {
+        "fund_code": code,
+        "fund_name": name,
+        "daily_limit": daily_limit,
+        "tier": int(body.tier),
+    }
+
+
+def _lookup_fund_meta(code: str) -> tuple[str, float | None]:
+    """尝试从东方财富拉取名称与日限购，失败则返回占位。"""
+    try:
+        infos = fetch_em_purchase_for_codes([code])
+        if infos:
+            info = infos[0]
+            limit = info.daily_limit if info.daily_limit is not None else 300.0
+            if info.status == "paused":
+                limit = 0.0
+            return info.fund_name or code, limit
+    except Exception:
+        pass
+    return code, None
 
 
 def _load_purchase_limits(db: Session, fund_codes: list[str]) -> dict[str, float]:
@@ -281,6 +368,10 @@ def _get_or_create_execution(db: Session, user: User) -> MonthlyExecution:
         prev_mem = prev_row.execution_detail.get(MEMORY_KEY)
         if isinstance(prev_mem, dict):
             execution_detail = copy_memory_to_execution_detail(None, prev_mem)
+        prev_custom = prev_row.execution_detail.get(CUSTOM_GROWTH_FUNDS_KEY)
+        if isinstance(prev_custom, list) and prev_custom:
+            execution_detail = dict(execution_detail or {})
+            execution_detail[CUSTOM_GROWTH_FUNDS_KEY] = prev_custom
 
     row = MonthlyExecution(
         user_id=user.id,
@@ -323,9 +414,11 @@ def execution_plan(
         target_dividend=float(config.target_dividend_pct),
         target_bond=float(config.target_bond_pct),
     )
-    db_limits = _load_purchase_limits(db, all_growth_fund_codes())
+    custom_funds = _custom_growth_funds(row)
+    db_limits = _load_purchase_limits(db, all_growth_fund_codes_with_custom(custom_funds))
     limit_overrides = _growth_limit_overrides(row)
     purchase_limits = merge_purchase_limits(db_limits=db_limits, user_overrides=limit_overrides)
+    purchase_limits = merge_custom_limits(purchase_limits, custom_funds)
     labels = {b.code: b.name for b in buckets}
     colors = {b.code: b.color for b in buckets}
 
@@ -346,8 +439,9 @@ def execution_plan(
     plan_dict = plan.to_dict()
     final_by_bucket = {d["bucket"]: d["final_amount"] for d in plan_dict["derivations"]}
     as_of = date.today()
-    invested = _invested_by_bucket(db, user.id, row.month)
-    today_invested = _today_invested_by_bucket(db, user.id, as_of)
+    custom_codes = [f["fund_code"] for f in custom_funds]
+    invested = _invested_by_bucket(db, user.id, row.month, extra_growth_codes=custom_codes)
+    today_invested = _today_invested_by_bucket(db, user.id, as_of, extra_growth_codes=custom_codes)
     dca_memory = get_daily_dca_memory(db, user.id, row.month)
     execution_detail = row.execution_detail if isinstance(row.execution_detail, dict) else {}
     daily = build_daily_execution(
@@ -416,6 +510,111 @@ def update_growth_limits(
     row.execution_detail = detail
     db.commit()
     return ApiResponse(data={"month": month, "growth_purchase_limits": merged_limits})
+
+
+@execution_router.post("/{month}/custom-growth-funds", response_model=ApiResponse)
+def add_custom_growth_fund(
+    month: str,
+    body: CustomGrowthFundAdd,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = _execution_row_or_404(db, user.id, month)
+    funds = db.query(Fund).filter(Fund.is_active.is_(True)).all()
+    fund_catalog = {f.code: f.name for f in funds}
+
+    try:
+        code = normalize_fund_code(body.fund_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    existing = _custom_growth_funds(row)
+    if any(item["fund_code"] == code for item in existing):
+        raise HTTPException(status_code=400, detail="该基金已在自定义列表中")
+    if code in all_growth_fund_codes():
+        raise HTTPException(status_code=400, detail="该基金已在内置纳指名单中，请直接在「日限购设置」调整")
+
+    name = (body.fund_name or "").strip() or fund_catalog.get(code)
+    daily_limit = float(body.daily_limit) if body.daily_limit is not None else None
+    if not name or name == code:
+        fetched_name, fetched_limit = _lookup_fund_meta(code)
+        name = name or fetched_name
+        if daily_limit is None and fetched_limit is not None:
+            daily_limit = fetched_limit
+    if daily_limit is None:
+        daily_limit = 300.0
+
+    item = {
+        "fund_code": code,
+        "fund_name": name or code,
+        "daily_limit": daily_limit,
+        "tier": int(body.tier),
+    }
+    _ensure_growth_fund(db, code, item["fund_name"])
+
+    detail = dict(row.execution_detail or {})
+    custom_list = list(existing)
+    custom_list.append(item)
+    detail[CUSTOM_GROWTH_FUNDS_KEY] = custom_list
+    row.execution_detail = detail
+    db.commit()
+    return ApiResponse(data={"month": month, "custom_growth_funds": custom_list})
+
+
+@execution_router.put("/{month}/custom-growth-funds", response_model=ApiResponse)
+def replace_custom_growth_funds(
+    month: str,
+    body: CustomGrowthFundsUpdate,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = _execution_row_or_404(db, user.id, month)
+    funds = db.query(Fund).filter(Fund.is_active.is_(True)).all()
+    fund_catalog = {f.code: f.name for f in funds}
+
+    custom_list: list[dict] = []
+    seen: set[str] = set()
+    for entry in body.funds:
+        try:
+            item = _normalize_custom_fund_item(entry, fund_catalog)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if item["fund_code"] in seen:
+            continue
+        seen.add(item["fund_code"])
+        _ensure_growth_fund(db, item["fund_code"], item["fund_name"])
+        custom_list.append(item)
+
+    detail = dict(row.execution_detail or {})
+    detail[CUSTOM_GROWTH_FUNDS_KEY] = custom_list
+    row.execution_detail = detail
+    db.commit()
+    return ApiResponse(data={"month": month, "custom_growth_funds": custom_list})
+
+
+@execution_router.delete("/{month}/custom-growth-funds/{fund_code}", response_model=ApiResponse)
+def remove_custom_growth_fund(
+    month: str,
+    fund_code: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    row = _execution_row_or_404(db, user.id, month)
+    try:
+        code = normalize_fund_code(fund_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    existing = _custom_growth_funds(row)
+    custom_list = [item for item in existing if item["fund_code"] != code]
+    if len(custom_list) == len(existing):
+        raise HTTPException(status_code=404, detail="自定义基金不存在")
+
+    detail = dict(row.execution_detail or {})
+    detail[CUSTOM_GROWTH_FUNDS_KEY] = custom_list
+    row.execution_detail = detail
+    db.commit()
+    return ApiResponse(data={"month": month, "custom_growth_funds": custom_list})
 
 
 def _execution_row_or_404(db: Session, user_id: int, month: str) -> MonthlyExecution:

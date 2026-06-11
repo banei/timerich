@@ -1,14 +1,11 @@
 import type { FeeSummary, FundAllocation } from "../../types/execution";
+import { fmtMoney } from "../../utils/formatNumber";
 
 type Props = {
   funds: FundAllocation[];
   summary?: FeeSummary | null;
   label?: string;
 };
-
-function fmtMoney(n: number) {
-  return `¥${n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function fmtPct(rate: number) {
   return `${(rate * 100).toFixed(2)}%`;

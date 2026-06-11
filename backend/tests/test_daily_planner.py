@@ -27,8 +27,8 @@ def test_growth_daily_plan_with_limits():
         bucket_amounts={"growth": 2000, "dividend": 0, "gold": 0, "bond_long": 0, "bond_short": 0},
         invested_by_bucket={"growth": 0},
         today_invested_by_bucket={"growth": 0},
-        fund_catalog={"161130": "易方达纳指100联接A", "018043": "天弘纳斯达克100A"},
-        purchase_limits={"161130": 300},
+        fund_catalog={"270042": "广发纳指100联接A", "000834": "大成纳指100联接A"},
+        purchase_limits={"270042": 300},
         labels={"growth": "成长档"},
         colors={"growth": "#3ABFF8"},
     )
@@ -37,7 +37,7 @@ def test_growth_daily_plan_with_limits():
     assert g.monthly_planned == 2000
     assert g.today_target > 0
     assert len(g.funds) >= 1
-    assert g.funds[0]["fund_code"] == "161130"
+    assert g.funds[0]["fund_code"] == "270042"
     assert g.funds[0]["planned_amount"] <= 300
     assert len(ctx.schedule) == trading_days_remaining(as_of)
 

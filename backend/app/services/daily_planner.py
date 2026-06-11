@@ -15,7 +15,13 @@ from app.services.execution_calendar import (
 )
 from app.services.daily_dca import build_dca_batch, get_today_dca_record, memory_fund_codes
 from app.services.execution_planner import BOND_FUNDS, DIVIDEND_FUNDS, plan_growth_bucket, _money
-from app.services.growth_limits import all_growth_fund_codes, growth_limit_snapshot
+from app.services.growth_limits import (
+    effective_growth_ladder,
+    growth_fund_roster,
+    growth_limit_snapshot,
+    merge_custom_limits,
+    parse_custom_growth_funds,
+)
 
 
 def trading_days_in_month(year: int, month: int) -> int:
@@ -88,6 +94,8 @@ class DailyExecutionContext:
     other_buckets: list[DailyBucketPlan] = field(default_factory=list)
     schedule: list[dict[str, Any]] = field(default_factory=list)
     growth_limits: list[dict[str, Any]] = field(default_factory=list)
+    ndx_roster: list[dict[str, Any]] = field(default_factory=list)
+    custom_growth_funds: list[dict[str, Any]] = field(default_factory=list)
     dca_batch: dict[str, Any] = field(default_factory=dict)
     date_label: str = ""
     weekday: str = ""
@@ -114,6 +122,8 @@ class DailyExecutionContext:
             "other_buckets": [b.to_dict() for b in self.other_buckets],
             "schedule": self.schedule,
             "growth_limits": self.growth_limits,
+            "ndx_roster": self.ndx_roster,
+            "custom_growth_funds": self.custom_growth_funds,
             "dca_batch": self.dca_batch,
         }
 
@@ -183,6 +193,14 @@ def build_daily_execution(
         )
 
     memory = dca_memory or {}
+    detail = execution_detail or {}
+    custom_funds = parse_custom_growth_funds(detail)
+    growth_ladder = effective_growth_ladder(custom_funds)
+    effective_limits = merge_custom_limits(
+        merged_purchase_limits or purchase_limits or {},
+        custom_funds,
+    )
+
     preferred_codes: list[str] | None = None
     if memory.get("active"):
         codes = memory_fund_codes(memory)
@@ -194,10 +212,11 @@ def build_daily_execution(
         bucket_plan = plan_growth_bucket(
             today_growth_target,
             fund_catalog,
-            purchase_limits,
+            effective_limits,
             name=labels.get("growth"),
             color=colors.get("growth"),
             preferred_fund_codes=preferred_codes,
+            growth_ladder=growth_ladder,
         )
         growth_funds = [f.to_dict() for f in bucket_plan.funds]
         if len(growth_funds) > 1:
@@ -263,7 +282,8 @@ def build_daily_execution(
         )
 
     schedule = _build_growth_schedule(as_of, growth_remaining)
-    limit_rows = growth_limit_snapshot(merged_purchase_limits or purchase_limits or {}, fund_catalog)
+    limit_rows = growth_limit_snapshot(effective_limits, fund_catalog, custom_funds=custom_funds)
+    roster = growth_fund_roster(effective_limits, fund_catalog, custom_funds=custom_funds)
 
     action_date = growth_action["date"]
     today_record = get_today_dca_record(execution_detail, action_date)
@@ -292,5 +312,7 @@ def build_daily_execution(
         other_buckets=other_buckets,
         schedule=schedule,
         growth_limits=limit_rows,
+        ndx_roster=roster,
+        custom_growth_funds=custom_funds,
         dca_batch=dca_batch,
     )

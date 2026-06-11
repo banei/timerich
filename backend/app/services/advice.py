@@ -10,7 +10,7 @@ def build_nasdaq_advice(pe_percentile: float, coefficient: float, label: str) ->
     if pe_percentile < 0.30:
         actions = [
             f"纳指 PE 分位 {pct}%（{label}），下月系数 ×{coefficient}，可加大纳指档投入。",
-            "优先按溢出阶梯买入：161130 → 018043 → 270042 等联接基金。",
+            "优先按溢出阶梯买入可申购的纳指联接（如 270042、000834、040046 等）。",
             "若场内 ETF 溢价 ≤0.5%，可适量配置 513100 等场内标的。",
         ]
         tone = "aggressive"
